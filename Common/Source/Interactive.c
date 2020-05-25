@@ -377,8 +377,12 @@ void vProcessInputByte(uint8 u8Byte) {
 		break;
 
 	case 'x': // 出力の変更
-		V_PRINT("Tx Power (0[min]-3[max]): ");
-		INPSTR_vStart(&sSerInpStr, E_INPUTSTRING_DATATYPE_DEC, 1, E_APPCONF_TX_POWER);
+		V_PRINT("Rf Power/Retry"
+				LB "   YZ Y=Retry(0:default,F:0,1-9:count"
+				LB "      Z=Power(3:Max,2,1,0:Min)"
+				LB "Input: "
+		);
+		INPSTR_vStart(&sSerInpStr, E_INPUTSTRING_DATATYPE_HEX, 2, E_APPCONF_TX_POWER);
 		break;
 
 	case 't': // set application role
@@ -876,11 +880,11 @@ void vProcessInputString(tsInpStr_Context *pContext) {
 
 	case E_APPCONF_TX_POWER:
 		_C {
-			uint32 u32val = u32string2dec(pu8str, u8idx);
+			uint32 u32val = u32string2hex(pu8str, u8idx);
 			V_PRINT(LB"-> ");
-			if (u32val <= 3) {
+			if ((u32val & 0xF) <= 3) {
 				sAppData.sConfig_UnSaved.u8pow = u32val;
-				V_PRINT("%d"LB, u32val);
+				V_PRINT("%02x"LB, u32val);
 			} else {
 				V_PRINT("(ignored)"LB);
 			}
@@ -1054,347 +1058,6 @@ void vProcessInputString(tsInpStr_Context *pContext) {
 	u16HoldUpdateScreen = 96; // 1.5sec
 }
 
-
-#if 0
-/** @ingroup MASTER
- * 文字列入力モードの処理
- */
-void vProcessInputString(tsInpStr_Context *pContext) {
-	uint8 *pu8str = pContext->au8Data;
-	uint8 u8idx = pContext->u8Idx;
-
-	switch(pContext->u32Opt) {
-	case E_APPCONF_APPID:
-		_C {
-			uint32 u32val = u32string2hex(pu8str, u8idx);
-
-			uint16 u16h, u16l;
-			u16h = u32val >> 16;
-			u16l = u32val & 0xFFFF;
-
-			if (u16h == 0x0000 || u16h == 0xFFFF || u16l == 0x0000 || u16l == 0xFFFF) {
-				V_PRINT("(ignored: 0x0000????,0xFFFF????,0x????0000,0x????FFFF can't be set.)");
-			} else {
-				sAppData.sConfig_UnSaved.u32appid = u32val;
-			}
-
-			V_PRINT(LB"-> 0x%08X"LB, u32val);
-		}
-		break;
-
-	case E_APPCONF_CHMASK:
-		_C {
-			// チャネルマスク（リスト）を入力解釈する。
-			//  11,15,19 のように１０進数を区切って入力する。
-			//  以下では区切り文字は任意で MAX_CHANNELS 分処理したら終了する。
-			uint32 u32chmask = 0; // 新しいチャネルマスク
-			uint8 *p_token[MAX_CHANNELS];
-
-			V_PRINT("-> ", sizeof(p_token));
-			uint8 u8num = u8StrSplitTokens(pu8str, p_token, MAX_CHANNELS);
-
-			int i, j = 0;
-			for (i = 0; i < u8num; i++) {
-				uint8 u8ch = u32string2dec(p_token[i], strlen((const char *)p_token[i]));
-
-				if (u8ch >= 11
-#if defined(JN514x)
-						&& u8ch <= 25
-#elif defined(JN516x)
-						&& u8ch <= 26
-#endif
-				) {
-					uint32 u32bit = (1UL << u8ch);
-					if (!(u32bit & u32chmask)) {
-						u32chmask |= u32bit;
-						j++;
-					}
-				}
-			}
-
-			if (u32chmask == 0x0) {
-				V_PRINT("(ignored)");
-			} else {
-				sAppData.sConfig_UnSaved.u32chmask = u32chmask;
-				vSerPrintChannelMask(u32chmask);
-			}
-
-			V_PRINT(LB);
-		}
-		break;
-
-	case E_APPCONF_POWER:
-		_C {
-			uint32 u32val = u32string2hex(pu8str, u8idx);
-			V_PRINT(LB"-> ");
-
-			uint8 u8Bps = (u32val & 0xF000) >> 12;
-			//uint8 u8Retry = (u32val & 0x00F0) >> 4;
-			uint8 u8Pow = (u32val & 0x000F);
-
-			if (u8Bps <= 2 && u8Pow <= 3) {
-				sAppData.sConfig_UnSaved.u16power = u32val & 0xFFFF;
-				V_PRINT("0x%x"LB, u32val);
-			} else {
-				V_PRINT("(ignored)"LB);
-			}
-		}
-		break;
-
-	case E_APPCONF_ID:
-		_C {
-			uint32 u32val = u32string2dec(pu8str, u8idx);
-			V_PRINT(LB"-> ");
-			if (u32val == 0x00) {
-				sAppData.sConfig_UnSaved.u8id = 121;
-			} else if (u32val == 0x78) {
-				sAppData.sConfig_UnSaved.u8id = LOGICAL_ID_CHILDREN; // デフォルト子機
-			} else {
-				sAppData.sConfig_UnSaved.u8id = u32val;
-			}
-			if (u32val != 0xFF) {
-				V_PRINT("%d(0x%02x)"LB, u32val, u32val);
-			} else {
-				V_PRINT("(ignored)"LB);
-			}
-		}
-		break;
-
-	case E_APPCONF_ROLE:
-		_C {
-			uint32 u32val = u32string2hex(pu8str, u8idx);
-			V_PRINT(LB"-> ");
-
-			sAppData.sConfig_UnSaved.u8role = u32val; // ０は未設定！
-			V_PRINT("(0x%02x)"LB, u32val, u32val);
-		}
-		break;
-
-	case E_APPCONF_LAYER:
-		_C {
-			uint32 u32val = u32string2dec(pu8str, u8idx);
-			V_PRINT(LB"-> ");
-			if (u32val >= 1 && u32val <= 63) {
-				sAppData.sConfig_UnSaved.u8layer = u32val; // ０は未設定！
-				V_PRINT("(%02d)"LB, u32val);
-			} else {
-				V_PRINT("(ignored)"LB);
-			}
-		}
-		break;
-
-	case E_APPCONF_BAUD_SAFE:
-		_C {
-			uint32 u32val = 0;
-
-			if (pu8str[0] == '0' && pu8str[1] == 'x') {
-				u32val = u32string2hex(pu8str + 2, u8idx - 2);
-			} if (u8idx <= 6) {
-				u32val = u32string2dec(pu8str, u8idx);
-			}
-
-			V_PRINT(LB"-> ");
-
-			if (u32val) {
-				sAppData.sConfig_UnSaved.u32baud_safe = u32val;
-				if (u32val & 0x80000000) {
-					V_PRINT("0x%x"LB, u32val);
-				} else {
-					V_PRINT("%d"LB, u32val);
-				}
-			} else {
-				V_PRINT("(ignored)"LB);
-			}
-		}
-		break;
-
-	case E_APPCONF_BAUD_PARITY:
-		_C {
-			V_PRINT(LB"-> ");
-			uint8 u8len = strlen((void*)pu8str);
-			int i;
-
-			// 既存の設定値を保存する
-			uint8 u8parity = sAppData.sFlash.sData.u8parity & APPCONF_UART_CONF_PARITY_MASK;
-			uint8 u8stop = sAppData.sFlash.sData.u8parity & APPCONF_UART_CONF_STOPBIT_MASK;
-			uint8 u8wordlen = sAppData.sFlash.sData.u8parity & APPCONF_UART_CONF_WORDLEN_MASK;
-
-			// １文字ずつ処理する（順番は任意でもよい）
-			for (i = 0; i < u8len; i++) {
-				switch(pu8str[i]) {
-				case 'N': case 'n': u8parity = 0; break;
-				case 'O': case 'o': u8parity = 1; break;
-				case 'E': case 'e': u8parity = 2; break;
-				case '1': u8stop = 0; break;
-				case '2': u8stop = APPCONF_UART_CONF_STOPBIT_MASK; break;
-				case '8': u8wordlen = 0; break;
-				case '7': u8wordlen = APPCONF_UART_CONF_WORDLEN_MASK; break;
-				default:
-					break;
-				}
-			}
-
-			// 新しい設定を計算する
-			uint8 u8new = u8parity | u8stop | u8wordlen;
-			if (u8new == sAppData.sFlash.sData.u8parity) {
-				// 変化が無ければ無視
-				V_PRINT("(ignored)");
-			} else {
-				sAppData.sConfig_UnSaved.u8parity = u8new;
-				vSerPrintUartOpt(u8new);
-			}
-		}
-		break;
-
-	case E_APPCONF_UART_MODE:
-		_C {
-			V_PRINT(LB"-> ");
-
-			int i;
-			for (i = 0; i < 16; i++) {
-				if (pu8str[0] >= 'a' && pu8str[0] <= 'z') {
-					pu8str[0] = pu8str[0] - ('a' - 'A');
-				}
-				if (au8UartModeToTxCmdId[i][1] == pu8str[0]) {
-					break;
-				}
-			}
-			if (i < 16) {
-				// 適切なモードが見つかった
-				sAppData.sConfig_UnSaved.u8uart_mode = i;
-
-				string p = NULL;
-				switch (i) {
-				case UART_MODE_TRANSPARENT: p = "Transparent"; break;
-				case UART_MODE_ASCII: p = "ASCII"; break;
-				case UART_MODE_BINARY: p = "Binary"; break;
-				case UART_MODE_BINARY_NOERR: p = "Binary(NOERR)"; break;
-				case UART_MODE_BINARY_ITEM10: p = "Binary($M..)"; break;
-				case UART_MODE_CHAT: p = "Chat"; break;
-				case UART_MODE_CHAT_NO_PROMPT: p = "Chat(no prmpt)"; break;
-				default: p = "Unknown"; break;
-				}
-
-				if (p) {
-					V_PRINT("%s mode"LB, p);
-				}
-
-			} else {
-				// 入力は無視
-				V_PRINT("(ignored)");
-			}
-		}
-		break;
-	case E_APPCONF_UART_LINE_SEP:
-		_C {
-			#define NUM_LINE_SEP 3
-			uint8 *p_tokens[NUM_LINE_SEP];
-			uint8 u8n_tokens = u8StrSplitTokens(pu8str, p_tokens, NUM_LINE_SEP);
-
-			V_PRINT(LB"-> ");
-
-			int i;
-			for (i = 0; i < NUM_LINE_SEP; i++) {
-				uint8 l = strlen((const char *)p_tokens[i]);
-
-				if ((u8n_tokens >= i + 1) && l) {
-					uint32 u32val;
-					if (i == 0) {
-						u32val = u32string2hex(p_tokens[i], l);
-						if (u32val <= 0xFF) {
-							sAppData.sConfig_UnSaved.u16uart_lnsep = u32val;
-							V_PRINT("0x%02x,", u32val);
-						} else {
-							V_PRINT("(ignored),");
-						}
-					} else if (i == 1) { // 最小パケットサイズ(DELIM 含む)
-						u32val = u32string2dec(p_tokens[i], l);
-						if (u32val && u32val <= SERCMD_SER_PKTLEN_MINIMUM) {
-							sAppData.sConfig_UnSaved.u8uart_lnsep_minpkt = u32val;
-							V_PRINT("%d,", u32val);
-						} else {
-							V_PRINT("(ignored),");
-						}
-					} else if (i == 2) { // 無入力区間による送信トリガー
-						u32val = u32string2dec(p_tokens[i], l);
-						if (u32val >= 10 || u32val == 0) {
-							sAppData.sConfig_UnSaved.u8uart_txtrig_delay = u32val;
-							V_PRINT("%d", u32val);
-						} else {
-							V_PRINT("(ignored)");
-						}
-					}
-				}
-			}
-		}
-		break;
-	case E_APPCONF_CRYPT_MODE:
-		_C {
-			if (pu8str[0] == '0') {
-				sAppData.sConfig_UnSaved.u8Crypt = 0;
-				V_PRINT(LB"--> Plain");
-			} else if (pu8str[0] == '1') {
-				sAppData.sConfig_UnSaved.u8Crypt = 1;
-				V_PRINT(LB"--> AES128");
-			} else {
-				V_PRINT(LB"(ignored)");
-			}
-		}
-		break;
-
-	case E_APPCONF_CRYPT_KEY:
-		_C {
-			uint8 u8len = strlen((void*)pu8str);
-
-			if (u8len == 0) {
-				memset(sAppData.sConfig_UnSaved.au8AesKey, 0, FLASH_APP_AES_KEY_SIZE + 1);
-				V_PRINT(LB"(cleared)");
-			} else
-			if (u8len && u8len <= FLASH_APP_AES_KEY_SIZE) {
-				memset(sAppData.sConfig_UnSaved.au8AesKey, 0, FLASH_APP_AES_KEY_SIZE + 1);
-				memcpy(sAppData.sConfig_UnSaved.au8AesKey, pu8str, u8len);
-				V_PRINT(LB);
-			} else {
-				V_PRINT(LB"(ignored)"LB);
-			}
-		}
-		break;
-
-	case E_APPCONF_HANDLE_NAME:
-		_C {
-			uint8 u8len = strlen((void*)pu8str);
-
-			if (u8len == 0) {
-				memset(sAppData.sConfig_UnSaved.au8ChatHandleName, 0, FLASH_APP_HANDLE_NAME_LEN + 1);
-				V_PRINT(LB"(cleared)");
-			} else
-			if (u8len && u8len <= FLASH_APP_HANDLE_NAME_LEN) {
-				memset(sAppData.sConfig_UnSaved.au8ChatHandleName, 0, FLASH_APP_HANDLE_NAME_LEN + 1);
-				memcpy(sAppData.sConfig_UnSaved.au8ChatHandleName, pu8str, u8len);
-				V_PRINT(LB);
-			} else {
-				V_PRINT(LB"(ignored)");
-			}
-		}
-		break;
-
-	case E_APPCONF_OPT_BITS:
-		_C {
-			uint32 u32val = u32string2hex(pu8str, u8idx);
-			V_PRINT(LB"-> ");
-			sAppData.sConfig_UnSaved.u32Opt = u32val;
-			V_PRINT("(%08x)"LB, u32val);
-		}
-		break;
-	default:
-		break;
-	}
-
-	// 一定時間待って画面を再描画
-	u16HoldUpdateScreen = 96; // 1.5sec
-}
-#endif
-
 /** @ingroup MASTER
  * インタラクティブモードの画面を再描画する。
  * - 本関数は TIMER_0 のイベント処理時に u16HoldUpdateScreen カウンタがデクリメントされ、
@@ -1443,7 +1106,7 @@ void vSerUpdateScreen() {
 	V_PRINT(")%c" LB,
 			FL_IS_MODIFIED_u32(chmask) ? '*' : ' ');
 
-	V_PRINT(" x: set Tx Power (%d)%c" LB,
+	V_PRINT(" x: set Tx Power (%02x)%c" LB,
 			FL_IS_MODIFIED_u8(pow) ? FL_UNSAVE_u8(pow) : FL_MASTER_u8(pow),
 			FL_IS_MODIFIED_u8(pow) ? '*' : ' ');
 

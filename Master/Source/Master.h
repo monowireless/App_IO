@@ -146,6 +146,8 @@ typedef struct {
 	bool_t bCustomDefaults; //!< カスタムデフォルトがロードされたかどうか
 
 	uint8 u8RxSetting; //!< bit0: 起動時 bit1: 常時
+
+	uint8 u8StandardTxRetry; //!< デフォルトの再送設定
 } tsAppData;
 
 /****************************************************************************

@@ -776,8 +776,17 @@ void cbAppColdStart(bool_t bStart) {
 			// 設定の反映
 			sToCoNet_AppContext.u32AppId = sAppData.sFlash.sData.u32appid;
 			sToCoNet_AppContext.u32ChMask = sAppData.sFlash.sData.u32chmask;
-			sToCoNet_AppContext.u8TxPower = sAppData.sFlash.sData.u8pow; // 出力の設定
+			sToCoNet_AppContext.u8TxPower = (sAppData.sFlash.sData.u8pow & 0x0F); // 出力の設定
 
+			// 標準再送回数の計算
+			uint8 u8retry = (sAppData.sFlash.sData.u8pow & 0xF0) >> 4;
+			switch (u8retry) {
+				case   0: sAppData.u8StandardTxRetry = 0x82; break;
+				case 0xF: sAppData.u8StandardTxRetry = 0; break;
+				default:  sAppData.u8StandardTxRetry = 0x80 + u8retry; break;
+			}
+
+			// eNwkMode の計算
 			if (sAppData.sFlash.sData.u8role == E_APPCONF_ROLE_MAC_NODE) {
 				sAppData.eNwkMode = E_NWKMODE_MAC_DIRECT;
 			} else
@@ -2102,7 +2111,7 @@ static int16 i16TransmitIoData(uint8 u8Quick) {
 		sTx.bAckReq = TRUE;
 	} else {
 		sTx.u32DstAddr  = TOCONET_MAC_ADDR_BROADCAST; // ブロードキャスト
-		sTx.u8Retry     = 0x82; // 1回再送
+		sTx.u8Retry     = sAppData.u8StandardTxRetry; // 再送回数
 		sTx.bAckReq     = FALSE;
 	}
 
@@ -2169,7 +2178,7 @@ int16 i16TransmitRepeat(tsRxDataApp *pRx) {
 
 	// 送信する
 	sTx.u32DstAddr  = TOCONET_MAC_ADDR_BROADCAST; // ブロードキャスト
-	sTx.u8Retry     = 0x82; // ２回再送
+	sTx.u8Retry     = sAppData.u8StandardTxRetry; // 再送回数
 
 	// フレームカウントとコールバック識別子の指定
 	sAppData.u16TxFrame++;
@@ -2244,7 +2253,7 @@ int16 i16TransmitIoSettingRequest(uint8 u8DstAddr, tsIOSetReq *pReq) {
 
 	// 送信する
 	sTx.u32DstAddr  = TOCONET_MAC_ADDR_BROADCAST; // ブロードキャスト
-	sTx.u8Retry     = 0x82; // 1回再送
+	sTx.u8Retry     = sAppData.u8StandardTxRetry; // 再送
 
 	{
 		/* 送信設定 */
@@ -2311,7 +2320,7 @@ static int16 i16TransmitSerMsg(uint8 u8DstAddr, uint8 u8Cmd, uint8 *pDat, uint8 
 
 	// 送信する
 	sTx.u32DstAddr  = TOCONET_MAC_ADDR_BROADCAST; // ブロードキャスト
-	sTx.u8Retry     = 0x82; // 1回再送
+	sTx.u8Retry     = sAppData.u8StandardTxRetry; // 1回再送
 
 	{
 		/* 送信設定 */

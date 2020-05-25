@@ -1,8 +1,9 @@
 VERSION_MAIN = 1
 VERSION_SUB  = 2
-VERSION_VAR  = 5
+VERSION_VAR  = 6
 TARGET_SUFF  = 
 
+# 1.2.6 出力パワー x での再送回数定義の追加
 # 1.2.5 バグの修正
 # 1.2.4 IDの取り扱いの修正
 # 1.2.3 子機の間欠受信モードの実装
