@@ -626,8 +626,7 @@ void vProcessEvCoreSlp(tsEvent *pEv, teEvent eEvent, uint32 u32evarg) {
 			}
 
 			// タイムアウト (64ms)
-			//if (PRSEV_u32TickFrNewState(pEv) > 64) {
-			if (PRSEV_u32TickFrNewState(pEv) > 50) {
+			if (PRSEV_u32TickFrNewState(pEv) > 64) {
 				ToCoNet_Event_SetState(pEv, E_STATE_FINISHED);
 			}
 		}
@@ -729,7 +728,7 @@ void cbAppColdStart(bool_t bStart) {
 
 		// CCA 関連の設定
 		sToCoNet_AppContext.u8CCA_Level = 1; // CCA は最小レベルで設定 (Level=1, Retry=0 が最小）
-		sToCoNet_AppContext.u8CCA_Retry = 1; // 再試行は１回のみ
+		sToCoNet_AppContext.u8CCA_Retry = 0; // 再試行は１回のみ
 
 		// ToCoNet の制御 Tick [ms]
 		sAppData.u16ToCoNetTickDelta_ms = 1000 / sToCoNet_AppContext.u16TickHz;
@@ -827,7 +826,7 @@ void cbAppColdStart(bool_t bStart) {
 			}
 
 			// 論理IDを121,122に保存した場合、親機・中継器で起動する
-			if (sAppData.bFlashLoaded) {
+			if (sAppData.bFlashLoaded || sAppData.bCustomDefaults) {
 				if (sAppData.sFlash.sData.u8id == LOGICAL_ID_CHILDREN + E_IO_MODE_PARNET /* 121 */) {
 					sAppData.u8Mode = E_IO_MODE_PARNET; // 親機のモード番号
 				} else
@@ -855,7 +854,7 @@ void cbAppColdStart(bool_t bStart) {
 
 			case E_IO_MODE_CHILD_SLP_1SEC:
 				if (!sAppData.u32SleepDur) {
-					if (sAppData.bFlashLoaded) {
+					if (sAppData.bFlashLoaded || sAppData.bCustomDefaults) {
 						sAppData.u32SleepDur = sAppData.sFlash.sData.u16SleepDur_ms;
 					} else {
 						sAppData.u32SleepDur = MODE4_SLEEP_DUR_ms;
@@ -865,7 +864,7 @@ void cbAppColdStart(bool_t bStart) {
 
 			case E_IO_MODE_CHILD_SLP_10SEC:
 				if (!sAppData.u32SleepDur) {
-					if (sAppData.bFlashLoaded) {
+					if (sAppData.bFlashLoaded || sAppData.bCustomDefaults) {
 						sAppData.u32SleepDur = sAppData.sFlash.sData.u16SleepDur_s * 1000L;
 					} else {
 						sAppData.u32SleepDur = MODE7_SLEEP_DUR_ms;
@@ -891,15 +890,15 @@ void cbAppColdStart(bool_t bStart) {
 			bPortTblInit(sAppData.u8IoTbl, IS_LOGICAL_ID_PARENT(sAppData.u8AppLogicalId));
 
 			// FPS のビットマスク
-			sAppData.u8FpsBitMask = 1;
-			if (sAppData.bFlashLoaded) {
+//			sAppData.u8FpsBitMask = 1;
+//			if (sAppData.bFlashLoaded || sAppData.bCustomDefaults) {
 				// 4fps: 1111
 				// 8fps:  111 (64/8 -1)
 				// 16pfs:  11 (64/16-1)
 				// 32fps:   1 (64/32-1)
 				sAppData.u8FpsBitMask = 64 / sAppData.sFlash.sData.u8Fps - 1;
 				// DBGOUT(0, "fps mask = %x"LB, sAppData.u8FpsBitMask);
-			}
+//			}
 
 			// IO設定に基づきチャネルを設定する
 			vChangeChannelPresetByPorts(sAppData.u32DIO_startup);
@@ -1525,7 +1524,7 @@ static void vInitHardware(int f_warm_start) {
 		memset(&sUartOpt, 0, sizeof(tsUartOpt));
 
 		// BAUD ピンが GND になっている場合、かつフラッシュの設定が有効な場合は、設定値を採用する (v1.0.3)
-		if (sAppData.bFlashLoaded && bPortBPS) {
+		if ((sAppData.bFlashLoaded || sAppData.bCustomDefaults) && bPortBPS) {
 			u32baud = sAppData.sFlash.sData.u32baud_safe;
 			sUartOpt.bHwFlowEnabled = FALSE;
 			sUartOpt.bParityEnabled = UART_PARITY_ENABLE;
@@ -1987,8 +1986,9 @@ static bool_t bCheckDupPacket(tsDupChk_Context *pc, uint32 u32Addr, uint16 u16Ti
 	uint32 u32Key;
 	if (DUPCHK_bFind(pc, u32Addr, &u32Key)) {
 		// 最後に受けたカウンタの値が得られるので、これより新しい
-		uint16 u16Delta = ((uint16)u32Key - u16TimeStamp) & 0x7FFF; // 最上位ビットは設定されない
-		if (u16Delta < 32) { // 32count=500ms, 500ms の遅延は想定外だが。
+		uint16 u16Delta = ((uint16)u32Key - (u16TimeStamp&0x7FFF)) & 0x7FFF; // 最上位ビットは設定されない
+		//vfPrintf(&sSerStream, LB"%d - %d = %d", u32Key, u16TimeStamp&0x7FFF, u16Delta);
+		if (u16Delta < 256) { // 32count=500ms, 500ms の遅延は想定外だが。
 			// すでに処理したパケット
 			return TRUE;
 		}
@@ -2034,8 +2034,9 @@ static int16 i16TransmitIoData(uint8 u8Quick) {
 	S_OCTET(APP_PROTOCOL_VERSION);
 	S_OCTET(sAppData.u8AppLogicalId); // アプリケーション論理アドレス
 	S_BE_DWORD(ToCoNet_u32GetSerial());  // シリアル番号
-	S_OCTET(IS_LOGICAL_ID_PARENT(sAppData.u8AppLogicalId) ? LOGICAL_ID_CHILDREN : LOGICAL_ID_PARENT); // 宛先
-	S_BE_WORD((sAppData.u32CtTimer0 & 0x7FFF) + ((u8Quick & TX_OPT_QUICK_BIT) ? 0x8000 : 0)); // タイムスタンプ
+	S_OCTET(IS_LOGICAL_ID_PARENT(sAppData.u8AppLogicalId) ? LOGICAL_ID_CHILDREN : LOGICAL_ID_PARENT); // 宛
+	uint16 u16ts = (sAppData.u32CtTimer0 & 0x7FFF) + ((u8Quick & TX_OPT_QUICK_BIT) ? 0x8000 : 0);
+	S_BE_WORD(u16ts); // タイムスタンプ
 		// bQuick 転送する場合は MSB をセットし、優先パケットである処理を行う
 	S_OCTET(0); // 中継フラグ
 
@@ -2076,6 +2077,8 @@ static int16 i16TransmitIoData(uint8 u8Quick) {
 				u16int |= (1UL << i);
 			}
 		}
+
+		//vfPrintf(&sSerStream, LB"ts=%d : %08X, %08X, %08X", u16ts, u16bm, u16bm_used, u16int );
 
 		// ビットマスクの計算
 #if 0
@@ -2472,6 +2475,7 @@ static void vReceiveIoData(tsRxDataApp *pRx) {
 		i16TransmitIoData(TX_OPT_RESP_BIT | TX_OPT_SMALLDELAY_BIT);
 	}
 
+	//vfPrintf(&sSerStream, "ts=%d ", u16TimeStamp);
 	/* UART 出力 */
 	if (bSetIo && !sSerCmdIn.bverbose && !IS_APPCONF_OPT_CHILD_RECV_NO_IO_DATA()) {
 		// 以下のようにペイロードを書き換えて UART 出力
