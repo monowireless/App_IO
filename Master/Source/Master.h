@@ -54,9 +54,9 @@ typedef enum {
  * IO の状態
  */
 typedef struct {
-	uint32 u32BtmBitmap; //!< (0xFFFFFFFF: 未確定)
+	uint32 u32BtmBitmap; //!< 現在のビットの状況 (0xFFFFFFFF: 未確定)
 	uint32 u32BtmUsed; //!< 利用対象ピンかどうか (0xFFFFFFFF: 未確定)
-	uint32 u32BtmChanged; //!< (0xFFFFFFFF: 未確定)
+	uint32 u32BtmChanged; //!< 変更があったポートまたは割り込み対象ピン (0xFFFFFFFF: 未確定)
 
 	uint8 au8Input[MAX_IO_TBL]; //!< 入力ポート (0: Hi, 1: Lo, 0xFF: 未確定)
 	uint8 au8Output[MAX_IO_TBL]; //!< 出力ポート (0: Hi, 1:Lo, 0xFF: 未確定)
@@ -148,6 +148,7 @@ typedef struct {
 	uint8 u8RxSetting; //!< bit0: 起動時 bit1: 常時
 
 	uint8 u8StandardTxRetry; //!< デフォルトの再送設定
+	uint8 u8StandardTxAckRetry; //!< デフォルトの再送設定(ACKモード時)
 } tsAppData;
 
 /****************************************************************************

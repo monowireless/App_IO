@@ -1,8 +1,9 @@
 VERSION_MAIN = 1
 VERSION_SUB  = 2
-VERSION_VAR  = 6
+VERSION_VAR  = 7
 TARGET_SUFF  = 
 
+# 1.2.7 Sleepモード時の初回送信データが全ボタン押しになる問題、UART 出力状態出力の不整合を整理
 # 1.2.6 出力パワー x での再送回数定義の追加
 # 1.2.5 バグの修正
 # 1.2.4 IDの取り扱いの修正

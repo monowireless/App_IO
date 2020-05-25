@@ -80,6 +80,7 @@
 #define TX_OPT_SMALLDELAY_BIT 2
 #define TX_OPT_QUICK_BIT 4
 #define TX_OPT_RESP_BIT 8
+#define TX_OPT_BY_INT 0x10 // 割り込みによる送信を明示する (sleep 時は bWakeUpByButton フラグも利用される)
 
 /****************************************************************************/
 /***        Type Definitions                                              ***/
@@ -220,6 +221,7 @@ void vProcessEvCorePwr(tsEvent *pEv, teEvent eEvent, uint32 u32evarg) {
 	case E_STATE_IDLE:
 		if (eEvent == E_EVENT_START_UP) {
 			sAppData.u16CtRndCt = 0;
+			sAppData.bWakeupByButton = 0x80; // 初回起床フラグとする
 		}
 
 		if (eEvent == E_EVENT_TICK_TIMER) {
@@ -415,15 +417,16 @@ void vProcessEvCoreSlp(tsEvent *pEv, teEvent eEvent, uint32 u32evarg) {
 	case E_STATE_IDLE:
 		if (eEvent == E_EVENT_START_UP) {
 			if (u32evarg & EVARG_START_UP_WAKEUP_MASK) {
+				// ウェイクアップ時
 				vfPrintf(&sSerStream, LB"!INF %s:", sAppData.bWakeupByButton ? "DI" : "TM");
 			} else {
-				// 電源投入起動
+				// 電源投入起動(POR)
 				if (IS_APPCONF_OPT_LOW_LATENCY_INPUT_SLEEP_TX_BY_INT()) {
 					// 低レイテンシモードの場合は電源投入時の IO 状態を元に、即送信
 					vfPrintf(&sSerStream, LB"!INF PO:");
-					u32WakeBtnStatus = u32_PORT_INPUT_MASK; // 始動時は全ポート変化とする
-					sAppData.bWakeupByButton = TRUE;
 				}
+
+				sAppData.bWakeupByButton = 0x80; // 起床時のフラグ
 			}
 		}
 
@@ -463,7 +466,10 @@ void vProcessEvCoreSlp(tsEvent *pEv, teEvent eEvent, uint32 u32evarg) {
 			} else {
 				sAppData.sIOData_now.u32BtmUsed |= sAppData.sIOData_now.u32BtmBitmap;
 			}
-			sAppData.sIOData_now.u32BtmChanged = u32WakeBtnStatus;
+			sAppData.sIOData_now.u32BtmChanged =
+					(sAppData.bWakeupByButton & 0x80) ?
+							u32_PORT_INPUT_MASK : // POR 時は全部変化とする
+							u32WakeBtnStatus;     // 起床時は、割り込み起床ピン
 
 			// DBGOUT(0, "!%08X %08X %08X"LB, sAppData.sIOData_now.u32BtmBitmap, sAppData.sIOData_now.u32BtmUsed, sAppData.sIOData_now.u32BtmChanged);
 
@@ -549,8 +555,7 @@ void vProcessEvCoreSlp(tsEvent *pEv, teEvent eEvent, uint32 u32evarg) {
 			}
 
 			// クイックで送信。完了待ちをするため CbId を保存する。
-			sAppData.sIOData_now.u32BtmChanged = u32WakeBtnStatus;
-
+			sAppData.u32CtTimer0++;
 			if (!bRemoteMode && u8_PORT_OUTPUT_COUNT > 0) {
 				// 親機からのデータ要求設定を行う
 				sAppData.sIOData_now.i16TxCbId = i16TransmitIoData(TX_OPT_NODELAY_BIT | TX_OPT_QUICK_BIT | TX_OPT_RESP_BIT);
@@ -780,10 +785,19 @@ void cbAppColdStart(bool_t bStart) {
 
 			// 標準再送回数の計算
 			uint8 u8retry = (sAppData.sFlash.sData.u8pow & 0xF0) >> 4;
+			sAppData.u8StandardTxRetry = 0x82;
+			sAppData.u8StandardTxAckRetry = 1;
+
 			switch (u8retry) {
-				case   0: sAppData.u8StandardTxRetry = 0x82; break;
-				case 0xF: sAppData.u8StandardTxRetry = 0; break;
-				default:  sAppData.u8StandardTxRetry = 0x80 + u8retry; break;
+				case   0: break;
+				case 0xF:
+					sAppData.u8StandardTxRetry = 0;
+					sAppData.u8StandardTxAckRetry = 0;
+					break;
+				default:
+					sAppData.u8StandardTxRetry = 0x80 + u8retry;
+					sAppData.u8StandardTxAckRetry = u8retry;
+					break;
 			}
 
 			// eNwkMode の計算
@@ -1231,7 +1245,7 @@ void cbToCoNet_vHwEvent(uint32 u32DeviceId, uint32 u32ItemBitmap) {
 				if (u32ItemBitmap & (1UL << au8PortTbl_DIn[i])) { // 押し下げを検知したポート
 					uint8 u8stat = sAppData.sIOData_now.au8Input[i]; // 元の値を取り出す。
 					uint8 u8ct = (u8stat & 0xF0) >> 4; // 上位４ビットは、前回の同様の割り込み受信からの 64fps カウンタ
-					// カウンタ値が無い場合は、個の割り込みを有効とする。
+					// カウンタ値が無い場合は、割り込みを有効とする。
 					if (u8ct == 0) {
 						sAppData.sIOData_now.au8Input[i] = (LOW_LATENCY_DELAYED_TRANSMIT_COUNTER * 0x10) + 1;
 						bTransmit = TRUE;
@@ -1245,13 +1259,19 @@ void cbToCoNet_vHwEvent(uint32 u32DeviceId, uint32 u32ItemBitmap) {
 			// いずれかのポートの割り込みが有効であった場合。
 			if (bTransmit) {
 				/* 速やかに送信する
-				 *   ポートの変更対象フラグを、この割り込みで入力検知したものとする。
+				 *   ポートの変更対象フラグ(u32BtmUsed)を、この割り込みで入力検知したものとする。
 				 *   そうしないと、関係ないビットが変更されてしまう
 				 */
 				uint32 u32used = sAppData.sIOData_now.u32BtmUsed; // 関数呼び出し中だけ値を変更する
+				uint32 u32changed = sAppData.sIOData_now.u32BtmChanged;
+
 				sAppData.sIOData_now.u32BtmUsed = u32ItemBitmap & u32_PORT_INPUT_MASK; // 割り込みでLoになったDINだけ変更対照として送信する
-				sAppData.sIOData_now.i16TxCbId = i16TransmitIoData(TX_OPT_NODELAY_BIT | TX_OPT_QUICK_BIT); // 送信処理を行う
+				sAppData.sIOData_now.u32BtmChanged = u32ItemBitmap & u32_PORT_INPUT_MASK; // 割り込みでLoになったDINだけ変更対照として送信する
+
+				sAppData.sIOData_now.i16TxCbId = i16TransmitIoData(TX_OPT_NODELAY_BIT | TX_OPT_QUICK_BIT | TX_OPT_BY_INT); // 送信処理を行う
+
 				sAppData.sIOData_now.u32BtmUsed = u32used | (u32ItemBitmap & u32_PORT_INPUT_MASK); //値を復元する
+				sAppData.sIOData_now.u32BtmChanged = u32changed;
 			}
 		}
 		break;
@@ -1562,12 +1582,15 @@ static void vInitHardware(int f_warm_start) {
 #endif
 
 	// 秒64回のTIMER0の初期化と稼働
-	sTimerApp.u8Device = E_AHI_DEVICE_TIMER0;
-	sTimerApp.u16Hz =64;
-	sTimerApp.u8PreScale = 4; // 15625ct@2^4
+	if (!(   sAppData.u8Mode == E_IO_MODE_CHILD_SLP_10SEC
+		  || sAppData.u8Mode == E_IO_MODE_CHILD_SLP_1SEC)) {
+		sTimerApp.u8Device = E_AHI_DEVICE_TIMER0;
+		sTimerApp.u16Hz =64;
+		sTimerApp.u8PreScale = 4; // 15625ct@2^4
 
-	vTimerConfig(&sTimerApp);
-	vTimerStart(&sTimerApp);
+		vTimerConfig(&sTimerApp);
+		vTimerStart(&sTimerApp);
+	}
 }
 
 
@@ -2042,8 +2065,12 @@ static int16 i16TransmitIoData(uint8 u8Quick) {
 		// bQuick 転送する場合は MSB をセットし、優先パケットである処理を行う
 	S_OCTET(0); // 中継フラグ
 
+	// 割り込み送信
+	bool_t bDiInt = (sAppData.bWakeupByButton & 0x01);
+	bool_t bWkFst = (sAppData.bWakeupByButton & 0x80);
+	sAppData.bWakeupByButton &= 0x7F; // ここでこのフラグをクリアしておく
+
 	// IOの状態
-	bool_t bDiInt = (sAppData.bWakeupByButton /* && IS_APPCONF_OPT_LOW_LATENCY_INPUT() */);
 	{
 		int i;
 
@@ -2094,9 +2121,11 @@ static int16 i16TransmitIoData(uint8 u8Quick) {
 		S_BE_WORD(u16bm_used);
 		S_BE_WORD(u16int);
 
-		// ステータスビット (bit0: 割り込み要因, bit1: 応答要求)
-		u8stat |= (bDiInt ? 0x01 : 0x00);
+		// ステータスビット (bit0: 割り込み要因, bit1: 応答要求, bit7: POR)
+		u8stat |= bDiInt ? 0x01 : 0;
+		u8stat |= (u8Quick & TX_OPT_BY_INT ? 0x01 : 0);
 		u8stat |= (u8Quick & TX_OPT_RESP_BIT ? 0x02 : 0);
+		u8stat |= bWkFst ? 0x80 : 0;
 		S_OCTET(u8stat);
 	}
 
@@ -2107,7 +2136,7 @@ static int16 i16TransmitIoData(uint8 u8Quick) {
 
 	if (IS_APPCONF_OPT_ACK_MODE() && IS_LOGICAL_ID_CHILD(sAppData.u8AppLogicalId)) {
 		sTx.u32DstAddr  = SERCMD_ADDR_CONV_TO_SHORT_ADDR(LOGICAL_ID_PARENT); // 親機宛に送信(Ack付き)
-		sTx.u8Retry     = 1; // アプリ再送は１回のみ
+		sTx.u8Retry     = sAppData.u8StandardTxAckRetry; // アプリ再送は１回のみ
 		sTx.bAckReq = TRUE;
 	} else {
 		sTx.u32DstAddr  = TOCONET_MAC_ADDR_BROADCAST; // ブロードキャスト
@@ -2319,15 +2348,22 @@ static int16 i16TransmitSerMsg(uint8 u8DstAddr, uint8 u8Cmd, uint8 *pDat, uint8 
 	sTx.u8Cmd = TOCONET_PACKET_CMD_APP_USER_SERIAL_MSG; // パケット種別
 
 	// 送信する
-	sTx.u32DstAddr  = TOCONET_MAC_ADDR_BROADCAST; // ブロードキャスト
-	sTx.u8Retry     = sAppData.u8StandardTxRetry; // 1回再送
+	if (IS_APPCONF_OPT_ACK_MODE() && (u8DstAddr != LOGICAL_ID_CHILDREN)) {
+		sTx.bAckReq     = TRUE;
+		sTx.u32DstAddr  = SERCMD_ADDR_CONV_TO_SHORT_ADDR(LOGICAL_ID_PARENT); // 指定子機アドレス宛て
+		sTx.u8Retry     = sAppData.u8StandardTxAckRetry; // 再送
+		sTx.u16RetryDur = (sToCoNet_AppContext.u8TxMacRetry + 1) * 6; // 再送間隔
+	} else {
+		sTx.bAckReq     = FALSE;
+		sTx.u32DstAddr  = TOCONET_MAC_ADDR_BROADCAST; // ブロードキャスト
+		sTx.u8Retry     = sAppData.u8StandardTxRetry; // 再送
+		sTx.u16RetryDur = 4; // 再送間隔
+	}
 
 	{
 		/* 送信設定 */
-		sTx.bAckReq = FALSE;
 		sTx.bSecurePacket = IS_CRYPT_MODE() ? TRUE : FALSE;
 		sTx.u32SrcAddr = sToCoNet_AppContext.u16ShortAddress; // ペイロードにアドレスが含まれるのでショートアドレス指定
-		sTx.u16RetryDur = 4; // 再送間隔
 		sTx.u16DelayMax = 16; // 衝突を抑制するため送信タイミングにブレを作る(最大16ms)
 
 		// 送信API
