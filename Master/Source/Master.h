@@ -114,12 +114,16 @@ typedef struct {
 	// config mode
 	uint8 u8Mode; //!< 動作モード(IO M1,M2,M3 から設定される)
 	uint8 u8ChCfg; //!< チャネル設定(EI1,EI2 から設定される)
+#ifdef JN514x
+	bool_t bStrong; //!< Strong モジュールの判定
+#endif
 
 	// button manager
 	tsBTM_Config sBTM_Config; //!< ボタン入力（連照により状態確定する）管理構造体
 	PR_BTM_HANDLER pr_BTM_handler; //!< ボタン入力用のイベントハンドラ (TickTimer 起点で呼び出す)
 	uint32 u32BTM_Tick_LastChange; //!< ボタン入力で最後に変化が有ったタイムスタンプ (操作の無効期間を作る様な場合に使用する)
 
+	uint8 u8MaxIoCount; //!< ボタンの最大数 (MAX_IO と不一致の運用もある)
 	uint16 au16HoldBtn[MAX_IO]; //!< ボタンの入力を一定時間維持する
 	uint32 u32BtnMask_Special; //!< ボタンの入力に対する特殊設定に対応するマスク
 
@@ -203,6 +207,15 @@ enum {
 
 #define E_APPCONF_OPT_ACK_MODE 0x0010 //!< ACK付き通信を行う @ingroup FLASH
 #define IS_APPCONF_OPT_ACK_MODE() (sAppData.sFlash.sData.u32Opt & E_APPCONF_OPT_ACK_MODE) //!< E_APPCONF_OPT_ACK_MODE判定 @ingroup FLASH
+
+#define E_APPCONF_OPT_NO_REGULAR_TX 0x0020 //!< REGULAR 通信しない @ingroup FLASH
+#define IS_APPCONF_OPT_NO_REGULAR_TX() (sAppData.sFlash.sData.u32Opt & E_APPCONF_OPT_NO_REGULAR_TX) //!< E_APPCONF_OPT_NO_REGULAR_TX判定 @ingroup FLASH
+
+#define E_APPCONF_OPT_CHILD_RECV_OTHER_NODES 0x10000 //!< 子機通常モードで受信を可能とする @ingroup FLASH
+#define IS_APPCONF_OPT_CHILD_RECV_OTHER_NODES() (sAppData.sFlash.sData.u32Opt & E_APPCONF_OPT_CHILD_RECV_OTHER_NODES) //!< E_APPCONF_OPT_CHILD_RECV_OTHER_NODES判定 @ingroup FLASH
+
+#define E_APPCONF_OPT_CHILD_RECV_NO_IO_DATA 0x20000 //!< 子機通常モードで受信を可能とする @ingroup FLASH
+#define IS_APPCONF_OPT_CHILD_RECV_NO_IO_DATA() (sAppData.sFlash.sData.u32Opt & E_APPCONF_OPT_CHILD_RECV_NO_IO_DATA) //!< E_APPCONF_OPT_CHILD_RECV_NO_IO_DATA判定 @ingroup FLASH
 
 /** サイレントモードの判定マクロ  @ingroup FLASH */
 #define IS_APPCONF_ROLE_SILENT_MODE() (sAppData.sFlash.sData.u8role == E_APPCONF_ROLE_SILENT)

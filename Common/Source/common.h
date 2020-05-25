@@ -194,9 +194,12 @@ extern const uint32 au32ChMask_Preset[];
 #define SERCMD_ID_INFORM_NETWORK_CONFIG 0x93
 #define SERCMD_ID_SET_NETWORK_CONFIG 0x94
 
+#define SERCMD_ID_SERCMD_EX_SIMPLE 0xA4
+
 // Packet CMD IDs
 #define TOCONET_PACKET_CMD_APP_USER_IO_DATA (TOCONET_PACKET_CMD_APP_USER+0) //!< IO の入出力データ
 #define TOCONET_PACKET_CMD_APP_USER_IO_DATA_EXT (TOCONET_PACKET_CMD_APP_USER+1) //!< IO の入出力データ
+#define TOCONET_PACKET_CMD_APP_USER_SERIAL_MSG (TOCONET_PACKET_CMD_APP_USER+2) //!< IO の入出力データ
 
 /* Modbus ASCII output functions */
 void vModbOut_AckNack(tsFILE *pSer, bool_t bAck);
@@ -208,10 +211,10 @@ void vModbOut_Config(tsFILE *pSer, tsFlashApp *pConfig);
 /*
  * 出力マクロ
  */
-#define V_PRINT(...) if(sSerCmd.bverbose) vfPrintf(&sSerStream,__VA_ARGS__) //!< VERBOSE モード時の printf 出力
-#define S_PRINT(...) if(!sSerCmd.bverbose) vfPrintf(&sSerStream,__VA_ARGS__) //!< 非VERBOSE モード時の printf 出力
-#define V_PUTCHAR(c) if(sSerCmd.bverbose) sSerStream.bPutChar(sSerStream.u8Device, c)  //!< VERBOSE モード時の putchar 出力
-#define S_PUTCHAR(c) if(!sSerCmd.bverbose) sSerStream.bPutChar(sSerStream.u8Device, c) //!< 非VERBOSE モード時の putchar 出力
+#define V_PRINT(...) if(sSerCmdIn.bverbose) vfPrintf(&sSerStream,__VA_ARGS__) //!< VERBOSE モード時の printf 出力
+#define S_PRINT(...) if(!sSerCmdIn.bverbose) vfPrintf(&sSerStream,__VA_ARGS__) //!< 非VERBOSE モード時の printf 出力
+#define V_PUTCHAR(c) if(sSerCmdIn.bverbose) sSerStream.bPutChar(sSerStream.u8Device, c)  //!< VERBOSE モード時の putchar 出力
+#define S_PUTCHAR(c) if(!sSerCmdIn.bverbose) sSerStream.bPutChar(sSerStream.u8Device, c) //!< 非VERBOSE モード時の putchar 出力
 #ifdef DEBUG_OUTPUT
 #define DBGOUT(lv, ...) if(sAppData.u8DebugLevel >= lv) vfPrintf(&sSerStream, __VA_ARGS__) //!< デバッグ出力
 #else

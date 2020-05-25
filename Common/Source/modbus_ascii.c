@@ -48,6 +48,21 @@ extern uint32 u32TickCount_ms; //!< ToCoNet での TickTimer
 /***        Exported Functions                                            ***/
 /****************************************************************************/
 
+static inline uint8 u8CheckLRC(tsModbusCmd *pCmd) {
+	// エラーチェック
+	if (pCmd->u8lrc) {
+		// 格納値
+		uint8 u8lrc = pCmd->au8data[pCmd->u16pos / 2 - 1]; // u16posは最後のデータの次の位置
+		// 計算値(二の補数の計算、ビット反転+1), デバッグ用に入力系列に対応する正しいLRCを格納しておく
+		pCmd->u8lrc = ~(pCmd->u8lrc - u8lrc) + 1;
+		return E_MODBUS_CMD_LRCERROR;
+	} else {
+		// LRCが正しければ、全部足したら 0 になる。
+		pCmd->u16len = pCmd->u16pos / 2 - 1;
+		return E_MODBUS_CMD_COMPLETE; // 完了！
+	}
+}
+
 /** @ingroup MBUSA
  * Modbus ASCII 入力系列の解釈を行う。\n
  * - :[0-9A-Z]+(CRLF) 系列の入力を行い、LRCチェックを行う
@@ -112,24 +127,16 @@ uint8 ModBusAscii_u8Parse(tsModbusCmd *pCmd, uint8 u8byte) {
 			pCmd->u16pos++;
 		} else if (u8byte == 0x0d) { // CR入力
 			pCmd->u8state = E_MODBUS_CMD_READLF;
+		} else if (u8byte == 'X') { // X キーによる省略
+			pCmd->u16len = pCmd->u16pos / 2;
+			pCmd->u8state = E_MODBUS_CMD_COMPLETE;
 		} else {
 			pCmd->u8state = E_MODBUS_CMD_EMPTY;
 		}
 		break;
 	case E_MODBUS_CMD_READLF:
 		if (u8byte == 0x0a) {
-			// エラーチェック
-			if (pCmd->u8lrc) {
-				// 格納値
-				uint8 u8lrc = pCmd->au8data[pCmd->u16pos / 2 - 1]; // u16posは最後のデータの次の位置
-				// 計算値(二の補数の計算、ビット反転+1), デバッグ用に入力系列に対応する正しいLRCを格納しておく
-				pCmd->u8lrc = ~(pCmd->u8lrc - u8lrc) + 1;
-				pCmd->u8state = E_MODBUS_CMD_LRCERROR;
-			} else {
-				// LRCが正しければ、全部足したら 0 になる。
-				pCmd->u8state = E_MODBUS_CMD_COMPLETE; // 完了！
-				pCmd->u16len = pCmd->u16pos / 2 - 1;
-			}
+			pCmd->u8state = u8CheckLRC(pCmd);
 		} else {
 			pCmd->u8state = E_MODBUS_CMD_ERROR;
 		}
