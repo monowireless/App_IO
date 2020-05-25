@@ -49,10 +49,9 @@ APPSRC += common.c
 APPSRC += flash.c
 APPSRC += modbus_ascii.c
 APPSRC += input_string.c
-APPSRC += sensor_driver.c
-APPSRC += adc.c
 APPSRC += duplicate_checker.c
-APPSRC += SMBus.c
+APPSRC += Interactive.c
+APPSRC += Pairing.c
 
 ### Target type
 # アプリケーション(.bin)をビルドするか、ライブラリ(.a)にするか指定します。
@@ -97,6 +96,10 @@ ifeq ($(TWE_DEVKIT),002L)
   CFLAGS += -DUSE_DEV_KIT_002_L
   OBJDIR_SUFF += _KIT002L
   TARGET_SUFF += _KIT002L
+endif
+
+ifneq ($(VERSION_DESC),)
+  TARGET_SUFF += $(VERSION_DESC)
 endif
 
 ### Additional Src/Include Path

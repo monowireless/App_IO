@@ -34,58 +34,108 @@
 #include "common.h"
 #include "Version.h"
 
-/** @ingroup MASTER
+/** @ingroup MBUSA
  * DI のポート番号のテーブル
  */
-const uint8 au8PortTbl_DIn[MAX_IO] = {
-	PORT_INPUT1,
-	PORT_INPUT2,
-	PORT_INPUT3,
-	PORT_INPUT4,
-	PORT_OUT1,
-	PORT_OUT2,
-	PORT_OUT3,
-	PORT_OUT4,
-	PORT_I2C_CLK,
-	PORT_I2C_DAT,
-	PORT_EO1,
-	PORT_EO2
-};
+uint8 au8PortTbl_DIn[MAX_IO_TBL];
+uint8 u8_PORT_INPUT_COUNT;  //!< @ingroup MASTER IO入力数
+uint32 u32_PORT_INPUT_MASK; //!< 入力ポートのマスク @ingroup MASTER
 
-/** @ingroup MASTER
+/** @ingroup MBUSA
  * DO のポート番号のテーブル
  */
-const uint8 au8PortTbl_DOut[MAX_IO] = {
-#if 1 // defined(USE_DEV_KIT_002_L) || defined(JN514x)
-	PORT_OUT1,
-	PORT_OUT2,
-	PORT_OUT3,
-	PORT_OUT4,
-	PORT_INPUT1,
-	PORT_INPUT2,
-	PORT_INPUT3,
-	PORT_INPUT4,
-	PORT_I2C_CLK,
-	PORT_I2C_DAT,
-	PORT_EO1,
-	PORT_EO2
-#else
-	PORT_INPUT1,
-	PORT_INPUT2,
-	PORT_INPUT3,
-	PORT_INPUT4,
-	PORT_OUT1,
-	PORT_OUT2,
-	PORT_OUT3,
-	PORT_OUT4,
-	PORT_I2C_CLK,
-	PORT_I2C_DAT,
-	PORT_EO1,
-	PORT_EO2
-#endif
+uint8 au8PortTbl_DOut[MAX_IO_TBL];
+uint8 u8_PORT_OUTPUT_COUNT; //!< @ingroup MASTER IO出力数
+uint32 u32_PORT_OUTPUT_MASK; //!< 出力ポートのマスク @ingroup MASTER
+
+/** @ingroup MBUSA
+ * 子機向け IO テーブル
+ * （出力割り当てがある場合は後ろから順番に DI1,DI2
+ */
+const uint8 au8PortTbl[MAX_IOTBL_SETS][2][MAX_IO_TBL][2] = {
+	{ // SET1 (12:0)
+		{ // EndDevice Input --> Parent Output
+			{PORT_INPUT1,	PORT_OUT1},
+			{PORT_INPUT2,	PORT_OUT2},
+			{PORT_INPUT3,	PORT_OUT3},
+			{PORT_INPUT4,	PORT_OUT4},
+			{PORT_OUT1,		PORT_INPUT1},
+			{PORT_OUT2,		PORT_INPUT2},
+			{PORT_OUT3,		PORT_INPUT3},
+			{PORT_OUT4,		PORT_INPUT4},
+			{PORT_I2C_CLK,	PORT_I2C_CLK},
+			{PORT_I2C_DAT,	PORT_I2C_DAT},
+			{PORT_EO1,		PORT_EO1},
+			{PORT_EO2,		PORT_EO2},
+			{0xFF, 0xFF} // TERMINATOR
+		},
+		{ //  Child Output <-- Parent Input
+			{0xFF, 0xFF} // TERMINATOR
+		},
+	},
+	{ // SET2 (8:4)
+		{ // EndDevice Input --> Parent Output
+			{PORT_INPUT1,	PORT_OUT1},
+			{PORT_INPUT2,	PORT_OUT2},
+			{PORT_INPUT3,	PORT_OUT3},
+			{PORT_INPUT4,	PORT_OUT4},
+			{PORT_I2C_CLK,	PORT_I2C_CLK},
+			{PORT_I2C_DAT,	PORT_I2C_DAT},
+			{PORT_EO1,		PORT_EO1},
+			{PORT_EO2,		PORT_EO2},
+			{0xFF, 0xFF} // TERMINATOR
+		},
+		{ //  Child Output <-- Parent Input
+			{PORT_OUT1,		PORT_INPUT1},
+			{PORT_OUT2,		PORT_INPUT2},
+			{PORT_OUT3,		PORT_INPUT3},
+			{PORT_OUT4,		PORT_INPUT4},
+			{0xFF, 0xFF} // TERMINATOR
+		},
+	},
+	{ // SET3 (6:6)
+		{ // EndDevice Input --> Parent Output
+			{PORT_INPUT1,	PORT_OUT1},
+			{PORT_INPUT2,	PORT_OUT2},
+			{PORT_INPUT3,	PORT_OUT3},
+			{PORT_INPUT4,	PORT_OUT4},
+			{PORT_EO1,		PORT_EO1},
+			{PORT_EO2,		PORT_EO2},
+			{0xFF, 0xFF} // TERMINATOR
+		},
+		{ //  Child Output <-- Parent Input
+			{PORT_OUT1,		PORT_INPUT1},
+			{PORT_OUT2,		PORT_INPUT2},
+			{PORT_OUT3,		PORT_INPUT3},
+			{PORT_OUT4,		PORT_INPUT4},
+			{PORT_I2C_CLK,	PORT_I2C_CLK},
+			{PORT_I2C_DAT,	PORT_I2C_DAT},
+			{0xFF, 0xFF} // TERMINATOR
+		},
+	},
+	{ // SET4 (0:12)
+		{ // EndDevice Input --> Parent Output
+			{0xFF, 0xFF} // TERMINATOR
+		},
+		{ //  Child Output <-- Parent Input
+			{PORT_OUT1,	PORT_INPUT1},
+			{PORT_OUT2,	PORT_INPUT2},
+			{PORT_OUT3,	PORT_INPUT3},
+			{PORT_OUT4,	PORT_INPUT4},
+			{PORT_INPUT1,		PORT_OUT1},
+			{PORT_INPUT2,		PORT_OUT2},
+			{PORT_INPUT3,		PORT_OUT3},
+			{PORT_INPUT4,		PORT_OUT4},
+			{PORT_I2C_CLK,	PORT_I2C_CLK},
+			{PORT_I2C_DAT,	PORT_I2C_DAT},
+			{PORT_EO1,		PORT_EO1},
+			{PORT_EO2,		PORT_EO2},
+			{0xFF, 0xFF} // TERMINATOR
+		},
+	},
 };
 
-/** @ingroup MASTER
+/** @ingroup MBUSA
  * MODE設定ビットからデフォルト割り当てされる論理ＩＤテーブル
  */
 const uint8 au8IoModeTbl_To_LogicalID[] = {
@@ -95,11 +145,11 @@ const uint8 au8IoModeTbl_To_LogicalID[] = {
 	123, // 32fps mode (7B)
 	124, // 1sec sleep (7C)
 	255, // NODEF
-	255, // NODEF
+	240, // PAIRING
 	127  // 10sec sleep (7F)
 };
 
-/** @ingroup MASTER
+/** @ingroup MBUSA
  * MODE設定ビットからデフォルト割り当てされる論理ＩＤテーブル
  */
 const uint32 au32ChMask_Preset[] = {
@@ -132,6 +182,62 @@ void vModbOut_MySerial(tsFILE *pSer) {
 			SERCMD_ID_INFORM_MODULE_ADDRESS,
 			au8SerOutBuff,
 			q - au8SerOutBuff);
+}
+
+/** @ingroup MBUSA
+ * テーブル設定の書き換え
+ * @param u8tbl テーブル番号
+ * @param bParent TRUE:親機 FALSE:子機
+ * @return TRUE:成功 FALSE:失敗（デフォルトのテーブル）
+ */
+bool_t bPortTblInit(uint8 u8tbl, bool_t bParent) {
+	int i;
+
+	u8_PORT_INPUT_COUNT = 0;
+	u32_PORT_INPUT_MASK = 0UL;
+	u8_PORT_OUTPUT_COUNT = 0;
+	u32_PORT_OUTPUT_MASK = 0UL;
+
+	uint8 u8DevID = bParent ? 1 : 0;
+	uint8 u8TblID = (u8tbl >= MAX_IOTBL_SETS) ? 0 : u8tbl;
+
+	// 入力テーブル
+	for (i = 0; i < MAX_IO_TBL; i++) {
+		uint8 u8in = au8PortTbl[u8TblID][u8DevID][i][u8DevID];
+		if (u8in == 0xFF) {
+			break;
+		} else {
+#ifdef JN514x
+			// STRONG の場合 DIO2/3 は未使用にする
+			if((u8in == 2 || u8in == 3) && ToCoNet_bIsStrong()) {
+				continue;
+			}
+#endif
+			au8PortTbl_DIn[i] = u8in;
+			u32_PORT_INPUT_MASK |= (1UL << u8in);
+		}
+	}
+	u8_PORT_INPUT_COUNT = i;
+
+	// 出力テーブル
+	for (i = 0; i < MAX_IO_TBL; i++) {
+		uint8 u8out = au8PortTbl[u8TblID][1-u8DevID][i][u8DevID];
+		if (u8out == 0xFF) {
+			break;
+		} else {
+#ifdef JN514x
+			// STRONG の場合 DIO2/3 は未使用にする
+			if((u8out == 2 || u8out == 3) && ToCoNet_bIsStrong()) {
+				continue;
+			}
+#endif
+			au8PortTbl_DOut[i] = u8out;
+			u32_PORT_OUTPUT_MASK |= (1UL << u8out);
+		}
+	}
+	u8_PORT_OUTPUT_COUNT = i;
+
+	return (u8tbl < MAX_IOTBL_SETS);
 }
 
 #if 0

@@ -125,23 +125,23 @@ uint8 ModBusAscii_u8Parse(tsModbusCmd *pCmd, uint8 u8byte) {
 			}
 
 			pCmd->u16pos++;
-		} else if (u8byte == 0x0d) { // CR入力
-			pCmd->u8state = E_MODBUS_CMD_READLF;
+		} else if (u8byte == 0x0d || u8byte == 0x0a) { // CR入力
+			if (pCmd->u16pos >= 4 && ((pCmd->u16pos & 1) == 0)) {
+				pCmd->u8state = u8CheckLRC(pCmd);
+			} else {
+				pCmd->u8state = E_MODBUS_CMD_ERROR;
+			}
 		} else if (u8byte == 'X') { // X キーによる省略
-			pCmd->u16len = pCmd->u16pos / 2;
-			pCmd->u8state = E_MODBUS_CMD_COMPLETE;
+			if (pCmd->u16pos >= 2 && ((pCmd->u16pos & 1) == 0)) {
+				pCmd->u16len = pCmd->u16pos / 2;
+				pCmd->u8state = E_MODBUS_CMD_COMPLETE;
+			} else {
+				pCmd->u8state = E_MODBUS_CMD_ERROR;
+			}
 		} else {
 			pCmd->u8state = E_MODBUS_CMD_EMPTY;
 		}
 		break;
-	case E_MODBUS_CMD_READLF:
-		if (u8byte == 0x0a) {
-			pCmd->u8state = u8CheckLRC(pCmd);
-		} else {
-			pCmd->u8state = E_MODBUS_CMD_ERROR;
-		}
-		break;
-
 	case E_MODBUS_CMD_PLUS1: // second press of '+'
 		if ((u8byte == '+') && (u32TickCount_ms - pCmd->u32timestamp > 200) && (u32TickCount_ms - pCmd->u32timestamp < 1000)) {
 			pCmd->u8state = E_MODBUS_CMD_PLUS2;
@@ -150,7 +150,6 @@ uint8 ModBusAscii_u8Parse(tsModbusCmd *pCmd, uint8 u8byte) {
 			pCmd->u8state = E_MODBUS_CMD_ERROR;
 		}
 		break;
-
 	case E_MODBUS_CMD_PLUS2: // third press of '+'
 		if ((u8byte == '+') && (u32TickCount_ms - pCmd->u32timestamp > 200) && (u32TickCount_ms - pCmd->u32timestamp < 1000)) {
 			pCmd->bverbose = pCmd->bverbose ? FALSE : TRUE;

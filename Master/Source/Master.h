@@ -39,6 +39,7 @@
 #include "flash.h"
 #include "btnMgr.h"
 
+#include "Interactive.h"
 #include "common.h"
 
 /** @ingroup MASTER
@@ -57,8 +58,8 @@ typedef struct {
 	uint32 u32BtmUsed; //!< 利用対象ピンかどうか (0xFFFFFFFF: 未確定)
 	uint32 u32BtmChanged; //!< (0xFFFFFFFF: 未確定)
 
-	uint8 au8Input[MAX_IO]; //!< 入力ポート (0: Hi, 1: Lo, 0xFF: 未確定)
-	uint8 au8Output[MAX_IO]; //!< 出力ポート (0: Hi, 1:Lo, 0xFF: 未確定)
+	uint8 au8Input[MAX_IO_TBL]; //!< 入力ポート (0: Hi, 1: Lo, 0xFF: 未確定)
+	uint8 au8Output[MAX_IO_TBL]; //!< 出力ポート (0: Hi, 1:Lo, 0xFF: 未確定)
 
 	uint32 u32TxLastTick; //!< 最後に送った時刻
 	uint32 u32RxLastTick; //!< 最後に受信した時刻
@@ -114,6 +115,7 @@ typedef struct {
 	// config mode
 	uint8 u8Mode; //!< 動作モード(IO M1,M2,M3 から設定される)
 	uint8 u8ChCfg; //!< チャネル設定(EI1,EI2 から設定される)
+	uint8 u8IoTbl; //!< IO割り当てテーブル番号
 #ifdef JN514x
 	bool_t bStrong; //!< Strong モジュールの判定
 #endif
@@ -123,8 +125,7 @@ typedef struct {
 	PR_BTM_HANDLER pr_BTM_handler; //!< ボタン入力用のイベントハンドラ (TickTimer 起点で呼び出す)
 	uint32 u32BTM_Tick_LastChange; //!< ボタン入力で最後に変化が有ったタイムスタンプ (操作の無効期間を作る様な場合に使用する)
 
-	uint8 u8MaxIoCount; //!< ボタンの最大数 (MAX_IO と不一致の運用もある)
-	uint16 au16HoldBtn[MAX_IO]; //!< ボタンの入力を一定時間維持する
+	uint16 au16HoldBtn[MAX_IO_TBL]; //!< ボタンの入力を一定時間維持する
 	uint32 u32BtnMask_Special; //!< ボタンの入力に対する特殊設定に対応するマスク
 
 	// latest state
@@ -141,93 +142,22 @@ typedef struct {
 
 	uint16 u16TxFrame; //!< 送信フレーム数
 	uint8 u8SerMsg_RequestNumber; //!< シリアルメッセージの要求番号
+
+	bool_t bCustomDefaults; //!< カスタムデフォルトがロードされたかどうか
+
+	uint8 u8RxSetting; //!< bit0: 起動時 bit1: 常時
 } tsAppData;
-
-/****************************************************************************
- * フラッシュ設定情報
- ***************************************************************************/
-
-#define FL_MASTER_u32(c) sAppData.sFlash.sData.u32##c //!< 構造体要素アクセス用のマクロ @ingroup FLASH
-#define FL_UNSAVE_u32(c) sAppData.sConfig_UnSaved.u32##c //!< 構造体要素アクセス用のマクロ @ingroup FLASH
-#define FL_IS_MODIFIED_u32(c) (sAppData.sConfig_UnSaved.u32##c != 0xFFFFFFFF)  //!< 構造体要素アクセス用のマクロ @ingroup FLASH
-
-#define FL_MASTER_u16(c) sAppData.sFlash.sData.u16##c //!< 構造体要素アクセス用のマクロ @ingroup FLASH
-#define FL_UNSAVE_u16(c) sAppData.sConfig_UnSaved.u16##c //!< 構造体要素アクセス用のマクロ @ingroup FLASH
-#define FL_IS_MODIFIED_u16(c) (sAppData.sConfig_UnSaved.u16##c != 0xFFFF)  //!< 構造体要素アクセス用のマクロ @ingroup FLASH
-
-#define FL_MASTER_u8(c) sAppData.sFlash.sData.u8##c //!< 構造体要素アクセス用のマクロ @ingroup FLASH
-#define FL_UNSAVE_u8(c) sAppData.sConfig_UnSaved.u8##c //!< 構造体要素アクセス用のマクロ @ingroup FLASH
-#define FL_IS_MODIFIED_u8(c) (sAppData.sConfig_UnSaved.u8##c != 0xFF) //!< 構造体要素アクセス用のマクロ @ingroup FLASH
-
-/** @ingroup FLASH
- * フラッシュ設定内容の列挙体
- */
-enum {
-	E_APPCONF_APPID,     //!< アプリケーションID
-	E_APPCONF_CHMASK,    //!< チャネルマスク
-	E_APPCONF_TX_POWER,  //!< TX 出力
-	E_APPCONF_ID,        //!< 8bitのID(ネットワークアドレス)
-	E_APPCONF_ROLE,      //!<
-	E_APPCONF_LAYER ,    //!<
-	E_APPCONF_SLEEP4,    //!< mode4 のスリープ期間設定
-	E_APPCONF_SLEEP7,    //!< mode7 のスリープ期間設定
-	E_APPCONF_FPS,       //!< 連続送信モードの秒あたりの送信数
-	E_APPCONF_PWM_HZ,    //!< PWM の周波数
-	E_APPCONF_SYS_HZ,    //!<
-	E_APPCONF_OPT,       //!< DIOの入力方法に関する設定
-	E_APPCONF_BAUD_SAFE, //!< BPS ピンをGにしたときのボーレート
-	E_APPCONF_BAUD_PARITY, //!< BPS ピンをGにしたときのパリティ設定 (0:None, 1:Odd, 2:Even)
-	E_APPCONF_CRYPT_MODE,  //!< 暗号化モード
-	E_APPCONF_CRYPT_KEY,   //!< 暗号化鍵
-	E_APPCONF_HOLD_MASK,   //!< Lo 維持の対象ポート
-	E_APPCONF_HOLD_DUR,    //!< Lo 維持の期間
-	E_APPCONF_TEST
-};
-
-/** @ingroup FLASH
- * フラッシュ設定で ROLE に対する要素名の列挙体
- * (未使用、将来のための拡張のための定義)
- */
-enum {
-	E_APPCONF_ROLE_MAC_NODE = 0,  //!< MAC直接のノード（親子関係は無し）
-	E_APPCONF_ROLE_NWK_MASK = 0x10, //!< NETWORKモードマスク
-	E_APPCONF_ROLE_PARENT,          //!< NETWORKモードの親
-	E_APPCONF_ROLE_ROUTER,        //!< NETWORKモードの子
-	E_APPCONF_ROLE_ENDDEVICE,     //!< NETWORKモードの子（未使用、スリープ対応）
-	E_APPCONF_ROLE_SILENT = 0x7F, //!< 何もしない（設定のみ)
-};
-
-#define E_APPCONF_OPT_LOW_LATENCY_INPUT 0x0001UL //!< Hi>Lo を検知後直ぐに送信する。 @ingroup FLASH
-#define E_APPCONF_OPT_LOW_LATENCY_INPUT_SLEEP_TX_BY_INT 0x0002UL //!< スリープを H>L 検出した場合に、割り込み要因のポートのみ送信する @ingroup FLASH
-#define E_APPCONF_OPT_ON_PRESS_TRANSMIT 0x0100UL //!< 押し下げ時のみ送信する特殊動作モード。 @ingroup FLASH
-
-#define IS_APPCONF_OPT_LOW_LATENCY_INPUT() (sAppData.sFlash.sData.u32Opt & E_APPCONF_OPT_LOW_LATENCY_INPUT) //!< E_APPCONF_OPT_LOW_LATENCY_INPUT 判定 @ingroup FLASH
-#define IS_APPCONF_OPT_LOW_LATENCY_INPUT_SLEEP_TX_BY_INT() (sAppData.sFlash.sData.u32Opt & E_APPCONF_OPT_LOW_LATENCY_INPUT_SLEEP_TX_BY_INT) //!< E_APPCONF_OPT_LOW_LATENCY_INPUT_SLEEP_TX_BY_INT 判定 @ingroup FLASH
-#define IS_APPCONF_OPT_ON_PRESS_TRANSMIT() (sAppData.sFlash.sData.u32Opt & E_APPCONF_OPT_ON_PRESS_TRANSMIT) //!< E_APPCONF_OPT_ON_PRESS_TRANSMIT判定 @ingroup FLASH
-
-#define E_APPCONF_OPT_ACK_MODE 0x0010 //!< ACK付き通信を行う @ingroup FLASH
-#define IS_APPCONF_OPT_ACK_MODE() (sAppData.sFlash.sData.u32Opt & E_APPCONF_OPT_ACK_MODE) //!< E_APPCONF_OPT_ACK_MODE判定 @ingroup FLASH
-
-#define E_APPCONF_OPT_NO_REGULAR_TX 0x0020 //!< REGULAR 通信しない @ingroup FLASH
-#define IS_APPCONF_OPT_NO_REGULAR_TX() (sAppData.sFlash.sData.u32Opt & E_APPCONF_OPT_NO_REGULAR_TX) //!< E_APPCONF_OPT_NO_REGULAR_TX判定 @ingroup FLASH
-
-#define E_APPCONF_OPT_CHILD_RECV_OTHER_NODES 0x10000 //!< 子機通常モードで受信を可能とする @ingroup FLASH
-#define IS_APPCONF_OPT_CHILD_RECV_OTHER_NODES() (sAppData.sFlash.sData.u32Opt & E_APPCONF_OPT_CHILD_RECV_OTHER_NODES) //!< E_APPCONF_OPT_CHILD_RECV_OTHER_NODES判定 @ingroup FLASH
-
-#define E_APPCONF_OPT_CHILD_RECV_NO_IO_DATA 0x20000 //!< 子機通常モードで受信を可能とする @ingroup FLASH
-#define IS_APPCONF_OPT_CHILD_RECV_NO_IO_DATA() (sAppData.sFlash.sData.u32Opt & E_APPCONF_OPT_CHILD_RECV_NO_IO_DATA) //!< E_APPCONF_OPT_CHILD_RECV_NO_IO_DATA判定 @ingroup FLASH
-
-/** サイレントモードの判定マクロ  @ingroup FLASH */
-#define IS_APPCONF_ROLE_SILENT_MODE() (sAppData.sFlash.sData.u8role == E_APPCONF_ROLE_SILENT)
-
-/** AES 利用のマクロ判定  @ingroup FLASH */
-#define IS_CRYPT_MODE() (sAppData.sFlash.sData.u8Crypt)
 
 /****************************************************************************
  * 内部処理
  ***************************************************************************/
 #define E_IO_FIX_STATE_NOT_READY 0x0
 #define E_IO_FIX_STATE_READY 0x1
+
+#define RX_STATE_BOOT_ON 0x01
+#define RX_STATE_CONTINUOUS 0x02
+
+#define HZ_LOW_LATENCY 1000 //!< 低レイテンシー時の制御周期 [Hz]
 
 #endif  /* MASTER_H_INCLUDED */
 

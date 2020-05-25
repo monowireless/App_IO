@@ -34,7 +34,7 @@ extern "C" {
 /****************************************************************************/
 
 /* アプリケーション名 */
-#define APP_NAME "TOCOS APP_IO"
+#define APP_NAME "TWE APP_IO"
 
 /* Serial Configuration */
 #define UART_BAUD			115200UL //!< UART のボーレート（デフォルト）
@@ -48,8 +48,10 @@ extern "C" {
 
 /* Specify the PAN ID and CHANNEL to be used by tags, readers and gateway */
 #define APP_ID              0x67720107 //!< アプリケーションID。同じIDでないと通信しない。
+
 //#define CHANNEL             17
 //#define CHMASK              ((1UL << 11) | (1UL << 17) | (1UL << 25))
+
 #define CHANNEL 16 //!< 使用するチャネル
 #define CHMASK (1UL << CHANNEL) //!< チャネルマスク（３つまで指定する事が出来る）
 

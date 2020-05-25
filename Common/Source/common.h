@@ -32,9 +32,15 @@
 #include "Version.h"
 
 /** @ingroup MASTER
- * 最大のIO数
+ * 最大のIO数入力
  */
-#define MAX_IO 12
+extern uint8 u8_PORT_INPUT_COUNT;
+/** @ingroup MASTER
+ * 最大のIO数出力
+ */
+extern uint8 u8_PORT_OUTPUT_COUNT;
+
+#define MAX_IO_TBL 16
 
 /** @ingroup MASTER
  * 使用する無線チャネル数の最大値 (複数設定すると Channel Agility を利用する)
@@ -136,9 +142,16 @@
 					   (1UL << PORT_I2C_CLK) | (1UL << PORT_I2C_DAT) | (1UL << PORT_EO1) | (1UL << PORT_EO2))
 #define PORT_INPUT_MASK PORT_OUT_MASK
 
-// マップテーブル
-extern const uint8 au8PortTbl_DOut[MAX_IO]; //!< IO番号(出力)のテーブル
-extern const uint8 au8PortTbl_DIn[MAX_IO]; //!< IO番号(入力)のテーブル
+// IOテーブル
+#define MAX_IOTBL_SETS 4 //!<  @ingroup MASTER IO設定テーブルの数
+extern uint8 au8PortTbl_DIn[MAX_IO_TBL];
+extern uint8 u8_PORT_INPUT_COUNT;
+extern uint32 u32_PORT_INPUT_MASK;
+extern uint8 au8PortTbl_DOut[MAX_IO_TBL];
+extern uint8 u8_PORT_OUTPUT_COUNT;
+extern uint32 u32_PORT_OUTPUT_MASK;
+
+bool_t bPortTblInit(uint8 u8tbl, bool_t bParent);
 
 /**
  * PORT_CONF1 ～ 3 による定義
@@ -155,22 +168,23 @@ extern const uint8 au8IoModeTbl_To_LogicalID[8]; //!< tePortConf2Mode から論�
 
 #define LOGICAL_ID_PARENT (0)
 #define LOGICAL_ID_CHILDREN (120)
+#define LOGICAL_ID_PAIRING (240)
 #define LOGICAL_ID_REPEATER (254)
 #define LOGICAL_ID_BROADCAST (255)
 
-#define IS_LOGICAL_ID_CHILD(s) (s>0 && s<128) //!< 論理アドレスが子機の場合
+#define IS_LOGICAL_ID_CHILD(s) (s>0 && s<128) //!< 論理アドレスが子機の場合 (Parent=0, Router=254)
 #define IS_LOGICAL_ID_PARENT(s) (s == 0) //!< 論理アドレスが親機の場合
 #define IS_LOGICAL_ID_REPEATER(s) (s == 254) //!< 論理アドレスがリピータの場合
 
 /**
- *
+ * チャネルマスクのプリセット
  */
 extern const uint32 au32ChMask_Preset[];
 
 /*
  * シリアルコマンドの定義
  */
-#define APP_PROTOCOL_VERSION 0x01 //!< プロトコルバージョン
+#define APP_PROTOCOL_VERSION 0x02 //!< プロトコルバージョン (v2 は 1.2 以降)
 
 #define SERCMD_ADDR_TO_MODULE 0xDB //!< Device -> 無線モジュール
 #define SERCMD_ADDR_TO_PARENT 0x00 //!< Device
@@ -220,5 +234,26 @@ void vModbOut_Config(tsFILE *pSer, tsFlashApp *pConfig);
 #else
 #define DBGOUT(lv, ...) //!< デバッグ出力
 #endif
+
+/*
+ * ビルド時の sizeof() チェックを行うマクロ
+ *   BUILD_BUG_ON(sizeof(myStruct)>100);
+ *   と書いておいて、これが成立するとコンパイル時エラーになる
+ */
+#define BUILD_BUG_ON(cond) ((void)sizeof(char[1-2*!!(cond)]))
+
+/*
+ * XMODEM 設定データ出力機能
+ */
+#define ASC_SOH 0x01
+#define ASC_EOT 0x04
+#define ASC_ACK 0x06
+#define ASC_CR  0x0D
+#define ASC_LF  0x0A
+#define ASC_NAK 0x15
+#define ASC_SUB 0x1A
+#define ASC_CTRL_Z ASC_SUB
+#define ASC_ESC 0x1B
+#define XMODEM_BLOCK_SIZE 128
 
 #endif /* COMMON_H_ */

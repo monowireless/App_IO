@@ -40,13 +40,12 @@
  * フラッシュ格納データ構造体
  */
 typedef struct _tsFlashApp {
-	uint32 u32appkey;		//!<
-	uint32 u32ver;			//!<
+	uint32 u32appkey;		//!< フラッシュデータ判定用キー (デフォルトの APPID を利用)
+	uint32 u32ver;			//!< ファームウェアバージョン
 
 	uint32 u32appid;		//!< アプリケーションID
 	uint32 u32chmask;		//!< 使用チャネルマスク（３つまで）
 	uint8 u8id;				//!< 論理ＩＤ (子機 1～100まで指定)
-	uint8 u8ch;				//!< チャネル（未使用、チャネルマスクに指定したチャネルから選ばれる）
 	uint8 u8pow;			//!< 出力パワー (0-3)
 	uint8 u8role;			//!< 未使用(将来のための拡張)
 	uint8 u8layer;			//!< 未使用(将来のための拡張)
@@ -81,5 +80,9 @@ typedef struct _tsFlash {
 bool_t bFlash_Read(tsFlash *psFlash, uint8 sector, uint32 offset);
 bool_t bFlash_Write(tsFlash *psFlash, uint8 sector, uint32 offset);
 bool_t bFlash_Erase(uint8 sector);
+
+bool_t bFlash_DataRecalcHeader(tsFlash *psFlash);
+bool_t bFlash_DataValidateHeader(tsFlash *psFlash);
+
 
 #endif /* FLASH_H_ */
